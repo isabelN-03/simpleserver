@@ -18,11 +18,16 @@ using System.Text.Json;
 
 /// <summary>
 /// Interface for simple servlets.
+/// 
 /// </summary>
 interface IServlet {
     void ProcessRequest(HttpListenerContext context);
 }
-
+/// <summary>
+/// BookHandler: Servlet that reads a JSON file and returns a random book
+/// as an HTML table with one row.
+/// TODO: search for specific books by author or title or whatever
+/// </summary>
 class BookHandler : IServlet {
     public void ProcessRequest(HttpListenerContext context) {
         var options = new JsonSerializerOptions
@@ -38,6 +43,7 @@ class BookHandler : IServlet {
 
         string delimiter = ",<br> ";
 
+        // build the HTML response
         string response = $@"
         <table border=1>
         <tr>
@@ -55,7 +61,8 @@ class BookHandler : IServlet {
         </table>
         ";
        
-        // write response to the output stream
+        // write HTTP response to the output stream
+        // all of the context.response stuff is setting the headers for the HTTP response
         byte[] bytes = System.Text.Encoding.UTF8.GetBytes(response);
         context.Response.ContentType = "text/html";
         context.Response.ContentLength64 = bytes.Length;
@@ -66,6 +73,9 @@ class BookHandler : IServlet {
         context.Response.OutputStream.Flush();
     }
 }
+/// <summary>
+/// FooHandler: Servlet that returns a simple HTML page.
+/// </summary>
 class FooHandler : IServlet {
 
     public void ProcessRequest(HttpListenerContext context) {
@@ -103,6 +113,9 @@ class SimpleHTTPServer
         {"books", new BookHandler()},
     };
 
+    // list of default index files
+    // if the client requests a directory (e.g. http://localhost:8080/), 
+    // we will look for one of these files
     private readonly string[] _indexFiles = { 
         "index.html", 
         "index.htm", 
@@ -205,7 +218,7 @@ class SimpleHTTPServer
     }
 
     /// <summary>
-    /// Construct server with suitable port.
+    /// Construct server with any open port.
     /// </summary>
     /// <param name="path">Directory path to serve.</param>
     public SimpleHTTPServer(string path)
@@ -248,6 +261,10 @@ class SimpleHTTPServer
         Console.WriteLine("Server stopped!");
     }
 
+    /// <summary>
+    /// Process an incoming HTTP request with the given context.
+    /// </summary>
+    /// <param name="context"></param>
     private void Process(HttpListenerContext context)
     {
         string filename = context.Request.Url.AbsolutePath;
@@ -317,6 +334,11 @@ class SimpleHTTPServer
         context.Response.OutputStream.Close();
     }
 
+    /// <summary>
+    /// Initializes the server by setting up a listener thread on the given port
+    /// </summary>
+    /// <param name="path">the path of the root directory to serve files</param>
+    /// <param name="port">the port to listen for connections</param>
     private void Initialize(string path, int port)
     {
         this._rootDirectory = path;
