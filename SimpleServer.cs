@@ -30,6 +30,8 @@ interface IServlet {
 /// </summary>
 class BookHandler : IServlet {
     public void ProcessRequest(HttpListenerContext context) {
+        // we want to use case-insensitive matching for the JSON properties
+        // the json files use lowercae letters, but we want to use uppercase in our C# code
         var options = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
@@ -41,9 +43,14 @@ class BookHandler : IServlet {
         // grab a random book
         Book book = books[4];
 
+        // convert book.Authors, which is a list, into a string with ", <br>" in between each author
+        // string.Join() is a very useful method
         string delimiter = ",<br> ";
+        string authors = string.Join(delimiter, book.Authors);
 
         // build the HTML response
+        // @ means a multiline string (Java doesn't have this)
+        // $ means string interpolation (Java doesn't have this either)
         string response = $@"
         <table border=1>
         <tr>
@@ -54,7 +61,7 @@ class BookHandler : IServlet {
         </tr>
         <tr>
             <td>{book.Title}</td>
-            <td>{string.Join(delimiter, book.Authors)}</td>
+            <td>{authors}</td>
             <td>{book.ShortDescription}</td>
             <td>{book.LongDescription}</td>
         </tr>
