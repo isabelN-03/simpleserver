@@ -78,6 +78,8 @@ class BookHandler : IServlet {
         context.Response.StatusCode = (int)HttpStatusCode.OK;
         context.Response.OutputStream.Write(bytes, 0, bytes.Length);
         context.Response.OutputStream.Flush();
+        context.Response.OutputStream.Close();
+
     }
 }
 /// <summary>
@@ -106,6 +108,7 @@ class FooHandler : IServlet {
         context.Response.OutputStream.Write(bytes, 0, bytes.Length);
 
         context.Response.OutputStream.Flush();
+        context.Response.OutputStream.Close();
     }
 }
 
@@ -262,7 +265,7 @@ class SimpleHTTPServer
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                Console.WriteLine(ex);
             }
         }
         Console.WriteLine("Server stopped!");
@@ -324,9 +327,11 @@ class SimpleHTTPServer
                 
                 context.Response.StatusCode = (int)HttpStatusCode.OK;
                 context.Response.OutputStream.Flush();
+                context.Response.OutputStream.Close();
             }
             catch (Exception ex)
             {
+                Console.WriteLine(ex);
                 context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
             }
 

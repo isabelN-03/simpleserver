@@ -16,11 +16,12 @@ static void TestJSON() {
 
 static void TestServer() {
     SimpleHTTPServer server = new SimpleHTTPServer("files", 8080);
+    string helpMessage = @"Server started. You can try the following commands:
+    stop - stop the server
+";
+    Console.WriteLine(helpMessage);
     while (true)
     {
-        Console.WriteLine(@"Server started. You can try the following commands:
-stop - stop the server
-");
         // read line from console
         String command = Console.ReadLine();
         if (command.Equals("stop"))
