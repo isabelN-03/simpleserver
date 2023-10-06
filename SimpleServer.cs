@@ -29,6 +29,8 @@ interface IServlet {
 /// TODO: search for specific books by author or title or whatever
 /// </summary>
 class BookHandler : IServlet {
+
+
     public void ProcessRequest(HttpListenerContext context) {
         // we want to use case-insensitive matching for the JSON properties
         // the json files use lowercae letters, but we want to use uppercase in our C# code
@@ -40,8 +42,13 @@ class BookHandler : IServlet {
         string text = File.ReadAllText(@"json/books.json");
         var books = JsonSerializer.Deserialize<List<Book>>(text, options);
 
+        int bookNum =0;
+        if(context.Request.QueryString.AllKeys.Contains("n")){
+            bookNum = Int32.Parse(context.Request.QueryString["n"]);
+        }
+        
         // grab a random book
-        Book book = books[4];
+        Book book = books[bookNum];
 
         // convert book.Authors, which is a list, into a string with ", <br>" in between each author
         // string.Join() is a very useful method
@@ -209,14 +216,24 @@ class SimpleHTTPServer
     private string _rootDirectory;
     private HttpListener _listener;
     private int _port;
+    private int numreqs;
     private bool _done = false;
-
+    private Dictionary<string, int> paths= new Dictionary<string, int>();
     public int Port
     {
         get { return _port; }
-        private set { }
+        private set { _port = value;}
     }
 
+    public int NumRequests
+    {
+        get {return numreqs; }
+        private set { numreqs = value;}
+    }
+
+    public Dictionary<string,int> Pathreqs{
+        get{return paths;}
+    } 
     /// <summary>
     /// Construct server with given port.
     /// </summary>
@@ -261,6 +278,7 @@ class SimpleHTTPServer
             try
             {
                 HttpListenerContext context = _listener.GetContext();
+                NumRequests++;
                 Process(context);
             }
             catch (Exception ex)
@@ -278,6 +296,7 @@ class SimpleHTTPServer
     private void Process(HttpListenerContext context)
     {
         string filename = context.Request.Url.AbsolutePath;
+        paths[filename] = paths.GetValueOrDefault(filename, 0) +1;
         filename = filename.Substring(1);
         Console.WriteLine($"{filename} is the path");
 

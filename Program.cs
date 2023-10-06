@@ -1,6 +1,19 @@
 ﻿using System.Text.Json;
 
-static void TestJSON() {
+static void TestJSON(){
+   var options = new JsonSerializerOptions
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    string text = File.ReadAllText("config.json");
+    var config = JsonSerializer.Deserialize<Config>(text, options); 
+
+    Console.WriteLine($"MimeMappings: {config.MimeTypes[".html"]}");
+    Console.WriteLine($"IndexFiles: {config.IndexFiles[0]}");
+
+}
+static void TestJSON2() {
     var options = new JsonSerializerOptions
     {
         PropertyNameCaseInsensitive = true
@@ -16,21 +29,44 @@ static void TestJSON() {
 
 static void TestServer() {
     SimpleHTTPServer server = new SimpleHTTPServer("files", 8080);
-    string helpMessage = @"Server started. You can try the following commands:
+    string helpMessage = @"You can try the following commands:
     stop - stop the server
+    help - view this message
+    number of requests - return number of requests
+    path - return number of requests for each URL
 ";
-    Console.WriteLine(helpMessage);
+
+    Console.WriteLine($"Server started! {helpMessage}");
     while (true)
     {
         // read line from console
+        //Console.WriteLine("> ");
         String command = Console.ReadLine();
         if (command.Equals("stop"))
         {
             server.Stop();
             break;
         }
+        else if( command.Equals("help"))
+        {
+           Console.WriteLine(helpMessage); 
+           // String command = Console.ReadLine();
+        }
+        else if(command.Equals("number of requests")){
+            Console.WriteLine(server.NumRequests);
+        }
+        else if(command.Equals("path")){
+            foreach(var path in server.Pathreqs)
+            {
+                Console.WriteLine($"{path.Key}: {path.Value}");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"Unknown Message : {command}"); 
+        }
     }
 }
 
-//TestJSON();
-TestServer();
+TestJSON();
+//TestServer();
