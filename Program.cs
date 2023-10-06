@@ -28,12 +28,13 @@ static void TestJSON2() {
 }
 
 static void TestServer() {
-    SimpleHTTPServer server = new SimpleHTTPServer("files", 8080);
+    SimpleHTTPServer server = new SimpleHTTPServer("files", 8080, "config.json");
     string helpMessage = @"You can try the following commands:
     stop - stop the server
     help - view this message
     number of requests - return number of requests
     path - return number of requests for each URL
+    404 requests - return number of tracked 404 requests for each URL
 ";
 
     Console.WriteLine($"Server started! {helpMessage}");
@@ -61,6 +62,12 @@ static void TestServer() {
                 Console.WriteLine($"{path.Key}: {path.Value}");
             }
         }
+        else if(command.Equals("404 requests")){
+            foreach(var _error in server.Errors)
+            {
+                Console.WriteLine($"{_error.Key}: {_error.Value}");
+            }
+        }
         else
         {
             Console.WriteLine($"Unknown Message : {command}"); 
@@ -68,5 +75,5 @@ static void TestServer() {
     }
 }
 
-TestJSON();
-//TestServer();
+//TestJSON();
+TestServer();

@@ -18,7 +18,6 @@ using System.Text.Json;
 
 /// <summary>
 /// Interface for simple servlets.
-/// 
 /// </summary>
 interface IServlet {
     void ProcessRequest(HttpListenerContext context);
@@ -30,63 +29,110 @@ interface IServlet {
 /// </summary>
 class BookHandler : IServlet {
 
+    private List<Book> books;
 
-    public void ProcessRequest(HttpListenerContext context) {
-        // we want to use case-insensitive matching for the JSON properties
+    public BookHandler(){
+         // we want to use case-insensitive matching for the JSON properties
         // the json files use lowercae letters, but we want to use uppercase in our C# code
+
         var options = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         };
 
         string text = File.ReadAllText(@"json/books.json");
-        var books = JsonSerializer.Deserialize<List<Book>>(text, options);
+        books = JsonSerializer.Deserialize<List<Book>>(text, options);
+    }
+    public void ProcessRequest(HttpListenerContext context) {
+        if(!context.Request.QueryString.AllKeys.Contains("cmd")){
+            // if the client didn't specify a command, return a 400 Bad Request
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            return;
+        }
+        string cmd = context.Request.QueryString["cmd"];
+        if(cmd.Equals("list"))
+        {
+            //list books from start to end from JSON file
+            int start =Int32.Parse(context.Request.QueryString["s"]); 
+            int end = Int32.Parse(context.Request.QueryString["e"]);
+            List<Book> booksList = books.GetRange(start,end - start +1);
 
-        int bookNum =0;
-        if(context.Request.QueryString.AllKeys.Contains("n")){
-            bookNum = Int32.Parse(context.Request.QueryString["n"]);
+            // build the HTML response
+            // @ means a multiline string (Java doesn't have this)
+            // $ means string interpolation (Java doesn't have this either)
+            string response = $@"
+                <table border=1>
+                <tr>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Short Description</th>
+                    <th>Thumbnail</th>
+                </tr>";
+                foreach(Book book in booksList)
+                {
+                    string authors = String.Join(",<br>", book.Authors);
+                    response += $@"
+                    <tr>
+                        <td>{book.Title}</td>
+                        <td>{authors}</td>
+                        <td>{book.ShortDescription}</td>
+                        <td><img src ='{book.ThumbnailUrl}'</></td>
+                    </tr>
+                    ";
+                }
+                response += "</table>";
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(response);
+                context.Response.ContentType = "text/html";
+                context.Response.ContentLength64 = bytes.Length;
+                context.Response.AddHeader("Date", DateTime.Now.ToString("r"));
+                context.Response.AddHeader("Last-Modified", DateTime.Now.ToString("r"));
+                context.Response.StatusCode = (int)HttpStatusCode.OK;
+                context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                context.Response.OutputStream.Flush();
+                context.Response.OutputStream.Close();
+
+        }else if(cmd.Equals("random"))
+        {
+            // return a random book
+            Random rand = new Random();
+            int index = rand.Next(books.Count);
+            Book book = books[index];
+            string authors = String.Join(",<br>", book.Authors);
+            string response = $@"
+                <table border=1>
+                <tr>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Short Description</th>
+                    <th>Thumbnail</th>
+                </tr>
+                <tr>
+                    <td>{book.Title}</td>
+                    <td>{authors}</td>
+                    <td>{book.ShortDescription}</td>
+                    <td><img src ='{book.ThumbnailUrl}'</></td>
+                </tr>
+                </table>";
+
+                // write HTTP response to the output stream
+                // all of the context.response stuff is setting the headers for the HTTP response
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(response);
+                context.Response.ContentType = "text/html";
+                context.Response.ContentLength64 = bytes.Length;
+                context.Response.AddHeader("Date", DateTime.Now.ToString("r"));
+                context.Response.AddHeader("Last-Modified", DateTime.Now.ToString("r"));
+                context.Response.StatusCode = (int)HttpStatusCode.OK;
+                context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                context.Response.OutputStream.Flush();
+                context.Response.OutputStream.Close();
+
+        }else 
+        {
+            // if the client specified an unknown command, return a 400 Bad Request
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            return;
         }
         
-        // grab a random book
-        Book book = books[bookNum];
-
-        // convert book.Authors, which is a list, into a string with ", <br>" in between each author
-        // string.Join() is a very useful method
-        string delimiter = ",<br> ";
-        string authors = string.Join(delimiter, book.Authors);
-
-        // build the HTML response
-        // @ means a multiline string (Java doesn't have this)
-        // $ means string interpolation (Java doesn't have this either)
-        string response = $@"
-        <table border=1>
-        <tr>
-            <th>Title</th>
-            <th>Author</th>
-            <th>Short Description</th>
-            <th>Long Description</th>
-        </tr>
-        <tr>
-            <td>{book.Title}</td>
-            <td>{authors}</td>
-            <td>{book.ShortDescription}</td>
-            <td>{book.LongDescription}</td>
-        </tr>
-        </table>
-        ";
-       
-        // write HTTP response to the output stream
-        // all of the context.response stuff is setting the headers for the HTTP response
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(response);
-        context.Response.ContentType = "text/html";
-        context.Response.ContentLength64 = bytes.Length;
-        context.Response.AddHeader("Date", DateTime.Now.ToString("r"));
-        context.Response.AddHeader("Last-Modified", DateTime.Now.ToString("r"));
-        context.Response.StatusCode = (int)HttpStatusCode.OK;
-        context.Response.OutputStream.Write(bytes, 0, bytes.Length);
-        context.Response.OutputStream.Flush();
-        context.Response.OutputStream.Close();
-
     }
 }
 /// <summary>
@@ -119,7 +165,337 @@ class FooHandler : IServlet {
     }
 }
 
+///<summary>
+///BookFilter: Servlet that filters and retruns books by specific author
+///</summary>
 
+class BookFilter: IServlet{
+     List<Book> books;
+    public BookFilter(){
+         // we want to use case-insensitive matching for the JSON properties
+        // the json files use lowercae letters, but we want to use uppercase in our C# code
+
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        string text = File.ReadAllText(@"json/books.json");
+        books = JsonSerializer.Deserialize<List<Book>>(text, options);
+    }
+
+    public void ProcessRequest(HttpListenerContext context) {
+        if(!context.Request.QueryString.AllKeys.Contains("cmd")){
+            // if the client didn't specify a command, return a 400 Bad Request
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            return;
+        }
+        string cmd = context.Request.QueryString["cmd"];
+        if(cmd.Equals("author")) //if command is author
+        {
+            //list books with author name from JSON file
+            string authorN = context.Request.QueryString["name"]; 
+            List<Book> booksList = new List<Book>();
+            foreach(Book book in books){
+                foreach(string author in book.Authors){
+                    if(author.Contains(authorN.Substring(0,1).ToUpper() + authorN.Substring(1).ToLower())){
+                        booksList.Add(book);
+                    }
+                }
+            }
+
+            // build the HTML response
+            // @ means a multiline string (Java doesn't have this)
+            // $ means string interpolation (Java doesn't have this either)
+            string response = $@"
+                <table border=1>
+                <tr>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Short Description</th>
+                    <th>Thumbnail</th>
+                </tr>";
+                foreach(Book book in booksList)
+                {
+                    string authors = String.Join(",<br>", book.Authors);
+                    response += $@"
+                    <tr>
+                        <td>{book.Title}</td>
+                        <td>{authors}</td>
+                        <td>{book.ShortDescription}</td>
+                        <td><img src ='{book.ThumbnailUrl}'</></td>
+                    </tr>
+                    ";
+                }
+                response += "</table>";
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(response);
+                context.Response.ContentType = "text/html";
+                context.Response.ContentLength64 = bytes.Length;
+                context.Response.AddHeader("Date", DateTime.Now.ToString("r"));
+                context.Response.AddHeader("Last-Modified", DateTime.Now.ToString("r"));
+                context.Response.StatusCode = (int)HttpStatusCode.OK;
+                context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                context.Response.OutputStream.Flush();
+                context.Response.OutputStream.Close();
+
+        }else if(cmd.Equals("title")) //if command is title
+        {
+            //list books with title from JSON file
+            string titleN = context.Request.QueryString["name"]; 
+            List<Book> booksList = new List<Book>();
+            foreach(Book book in books){
+                if(book.Title.Contains(titleN)){
+                    booksList.Add(book);
+                }
+            }
+
+            // build the HTML response
+            // @ means a multiline string (Java doesn't have this)
+            // $ means string interpolation (Java doesn't have this either)
+            string response = $@"
+                <table border=1>
+                <tr>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Short Description</th>
+                    <th>Thumbnail</th>
+                </tr>";
+                foreach(Book book in booksList)
+                {
+                    string authors = String.Join(",<br>", book.Authors);
+                    response += $@"
+                    <tr>
+                        <td>{book.Title}</td>
+                        <td>{authors}</td>
+                        <td>{book.ShortDescription}</td>
+                        <td><img src ='{book.ThumbnailUrl}'</></td>
+                    </tr>
+                    ";
+                }
+                response += "</table>";
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(response);
+                context.Response.ContentType = "text/html";
+                context.Response.ContentLength64 = bytes.Length;
+                context.Response.AddHeader("Date", DateTime.Now.ToString("r"));
+                context.Response.AddHeader("Last-Modified", DateTime.Now.ToString("r"));
+                context.Response.StatusCode = (int)HttpStatusCode.OK;
+                context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                context.Response.OutputStream.Flush();
+                context.Response.OutputStream.Close();
+
+        }else 
+        {
+            // if the client specified an unknown command, return a 400 Bad Request
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            return;
+        }
+        
+    }
+}
+
+/// <summary>
+/// Errorpage: Servlet that returns custom 404 error page
+/// </summary>
+
+class ErrorPage : IServlet{
+
+    public void ProcessRequest(HttpListenerContext context){
+        string response = $@"
+        <H1> Error: 404</H1>
+        <h2>This page cannot be found</h2> 
+        ";
+
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(response);
+
+        context.Response.ContentType = "text/html";
+        context.Response.ContentLength64 = bytes.Length;
+        context.Response.AddHeader("Date", DateTime.Now.ToString("r"));
+        context.Response.AddHeader("Last-Modified", DateTime.Now.ToString("r"));
+        context.Response.StatusCode = (int)HttpStatusCode.OK;
+        context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+        context.Response.OutputStream.Flush();
+        context.Response.OutputStream.Close();
+    }
+}
+
+/// <summary>
+/// BuffyGenerator: Servlet that returns a random episode, selected season or selected episode of Buffy the Vampire Slayer
+/// </summary>
+class BuffyGenerator: IServlet{
+     List<Show> episodes;
+    public BuffyGenerator(){
+         // we want to use case-insensitive matching for the JSON properties
+        // the json files use lowercae letters, but we want to use uppercase in our C# code
+
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        string text = File.ReadAllText(@"json/buffy.json");
+        episodes = JsonSerializer.Deserialize<List<Show>>(text, options);
+    }
+
+    public void ProcessRequest(HttpListenerContext context) {
+        if(!context.Request.QueryString.AllKeys.Contains("cmd")){
+            // if the client didn't specify a command, return a 400 Bad Request
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            return;
+        }
+        string cmd = context.Request.QueryString["cmd"];
+        if(cmd.Equals("random")) //if command is random
+        {
+            // return a random episode
+            Random rand = new Random();
+            int index = rand.Next(episodes.Count);
+            Show random = episodes[index];
+            
+            //string rating = random.Rating;
+            string response = $@"
+                <table border=1>
+                <tr>
+                    <th>Season</th>
+                    <th>Episode </th>
+                    <th>Name</th>
+                    <th>Summary</th>
+                    <th>Rating</th>
+                    <th>URL</th>
+                    
+                </tr>
+                <tr>
+                    <td>{random.Season}</td>
+                    <td>{random.Number}</td>
+                    <td>
+                    {random.Name}
+                    <img src='{random.Image.Medium}'/>
+                    </td>
+                    <td>{random.Summary}</td>
+                    <td>{random.Rating.Average}</td>
+                    <td>{random.Url}</td>
+                    </tr>
+
+                </table>";
+
+                // write HTTP response to the output stream
+                // all of the context.response stuff is setting the headers for the HTTP response
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(response);
+                context.Response.ContentType = "text/html";
+                context.Response.ContentLength64 = bytes.Length;
+                context.Response.AddHeader("Date", DateTime.Now.ToString("r"));
+                context.Response.AddHeader("Last-Modified", DateTime.Now.ToString("r"));
+                context.Response.StatusCode = (int)HttpStatusCode.OK;
+                context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                context.Response.OutputStream.Flush();
+                context.Response.OutputStream.Close();
+
+        }else if(cmd.Equals("season")) //if command is seasonList
+        {
+            //list specific episode from JSON file
+            int season =Int32.Parse(context.Request.QueryString["s"]); 
+            List<Show> seasonList = new List<Show>();
+            foreach(Show s in episodes){
+                if(s.Season == season){
+                    seasonList.Add(s);
+                }
+            }
+
+            // build the HTML response
+            // @ means a multiline string (Java doesn't have this)
+            // $ means string interpolation (Java doesn't have this either)
+            string response = $@"
+                <table border=1>
+                <tr>
+                    <th>Season</th>
+                    <th>Episode </th>
+                    <th>Name</th>
+                    <th>Summary</th>
+                    <th>Rating</th>
+                    <th>URL</th>
+                </tr>";
+                foreach(Show s in seasonList)
+                {
+                    //string rating = s.Rating;
+                    response += $@"
+                    <tr>
+                        <td>{s.Season}</td>
+                        <td>{s.Number}</td>
+                        <td>{s.Name}
+                        <p></p>
+                        <img src='{s.Image.Medium}'/>
+                        </td>
+                        <td>{s.Summary}</td>
+                        <td>{s.Rating.Average}</td>
+                        <td>{s.Url}</td>
+                    </tr>
+                    ";
+                }
+                response += "</table>";
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(response);
+                context.Response.ContentType = "text/html";
+                context.Response.ContentLength64 = bytes.Length;
+                context.Response.AddHeader("Date", DateTime.Now.ToString("r"));
+                context.Response.AddHeader("Last-Modified", DateTime.Now.ToString("r"));
+                context.Response.StatusCode = (int)HttpStatusCode.OK;
+                context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                context.Response.OutputStream.Flush();
+                context.Response.OutputStream.Close();
+
+        } else if(cmd == "episode") //if command is episode
+        {
+            //list specific episode from JSON file
+            int season =Int32.Parse(context.Request.QueryString["s"]); 
+            int episode = Int32.Parse(context.Request.QueryString["e"]);
+            Show episodeN = new Show();
+            foreach(Show e in episodes){
+                if(e.Season == season && e.Number == episode){
+                    episodeN = e;
+                }
+            }
+
+            // build the HTML response
+            // @ means a multiline string (Java doesn't have this)
+            // $ means string interpolation (Java doesn't have this either)
+            string response = $@"
+                <table border=1>
+                <tr>
+                    <th>Season</th>
+                    <th>Episode </th>
+                    <th>Name</th>
+                    <th>Summary</th>
+                    <th>Rating</th>
+                    <th>URL</th>
+                </tr>
+                <tr>
+                    <td>{episodeN.Season}</td>
+                    <td>{episodeN.Number}</td>
+                    <td>{episodeN.Name}
+                    <p></p>
+                    <img src='{episodeN.Image.Medium}'/>
+                    </td>
+                    <td>{episodeN.Summary}</td>
+                    <td>{episodeN.Rating.Average}</td>
+                    <td>{episodeN.Url}</td>
+                </tr>
+                </table>";
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(response);
+                context.Response.ContentType = "text/html";
+                context.Response.ContentLength64 = bytes.Length;
+                context.Response.AddHeader("Date", DateTime.Now.ToString("r"));
+                context.Response.AddHeader("Last-Modified", DateTime.Now.ToString("r"));
+                context.Response.StatusCode = (int)HttpStatusCode.OK;
+                context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                context.Response.OutputStream.Flush();
+                context.Response.OutputStream.Close();
+        }
+        else 
+        {
+            // if the client specified an unknown command, return a 400 Bad Request
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            return;
+        }
+        
+    }
+}
 class SimpleHTTPServer
 {
     // bind servlets to a path
@@ -128,89 +504,18 @@ class SimpleHTTPServer
     private static IDictionary<string, IServlet> _servlets = new Dictionary<string, IServlet>() {
         {"foo", new FooHandler()},
         {"books", new BookHandler()},
+        {"filter", new BookFilter()},
+        {"buffy", new BuffyGenerator()}
     };
 
     // list of default index files
     // if the client requests a directory (e.g. http://localhost:8080/), 
     // we will look for one of these files
-    private readonly string[] _indexFiles = { 
-        "index.html", 
-        "index.htm", 
-        "default.html", 
-        "default.htm" 
-    };
+    private string[] _indexFiles;
     
     // map extensions to MIME types
     // TODO: put this into a configuration file
-    private static IDictionary<string, string> _mimeTypeMappings = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase) {
-        #region extension to MIME type list
-        {".asf", "video/x-ms-asf"},
-        {".asx", "video/x-ms-asf"},
-        {".avi", "video/x-msvideo"},
-        {".bin", "application/octet-stream"},
-        {".cco", "application/x-cocoa"},
-        {".crt", "application/x-x509-ca-cert"},
-        {".css", "text/css"},
-        {".deb", "application/octet-stream"},
-        {".der", "application/x-x509-ca-cert"},
-        {".dll", "application/octet-stream"},
-        {".dmg", "application/octet-stream"},
-        {".ear", "application/java-archive"},
-        {".eot", "application/octet-stream"},
-        {".exe", "application/octet-stream"},
-        {".flv", "video/x-flv"},
-        {".gif", "image/gif"},
-        {".hqx", "application/mac-binhex40"},
-        {".htc", "text/x-component"},
-        {".htm", "text/html"},
-        {".html", "text/html"},
-        {".ico", "image/x-icon"},
-        {".img", "application/octet-stream"},
-        {".iso", "application/octet-stream"},
-        {".jar", "application/java-archive"},
-        {".jardiff", "application/x-java-archive-diff"},
-        {".jng", "image/x-jng"},
-        {".jnlp", "application/x-java-jnlp-file"},
-        {".jpeg", "image/jpeg"},
-        {".jpg", "image/jpeg"},
-        {".js", "application/x-javascript"},
-        {".mml", "text/mathml"},
-        {".mng", "video/x-mng"},
-        {".mov", "video/quicktime"},
-        {".mp3", "audio/mpeg"},
-        {".mpeg", "video/mpeg"},
-        {".mpg", "video/mpeg"},
-        {".msi", "application/octet-stream"},
-        {".msm", "application/octet-stream"},
-        {".msp", "application/octet-stream"},
-        {".pdb", "application/x-pilot"},
-        {".pdf", "application/pdf"},
-        {".pem", "application/x-x509-ca-cert"},
-        {".pl", "application/x-perl"},
-        {".pm", "application/x-perl"},
-        {".png", "image/png"},
-        {".prc", "application/x-pilot"},
-        {".ra", "audio/x-realaudio"},
-        {".rar", "application/x-rar-compressed"},
-        {".rpm", "application/x-redhat-package-manager"},
-        {".rss", "text/xml"},
-        {".run", "application/x-makeself"},
-        {".sea", "application/x-sea"},
-        {".shtml", "text/html"},
-        {".sit", "application/x-stuffit"},
-        {".swf", "application/x-shockwave-flash"},
-        {".tcl", "application/x-tcl"},
-        {".tk", "application/x-tcl"},
-        {".txt", "text/plain"},
-        {".war", "application/java-archive"},
-        {".wbmp", "image/vnd.wap.wbmp"},
-        {".wmv", "video/x-ms-wmv"},
-        {".xml", "text/xml"},
-        {".xpi", "application/x-xpinstall"},
-        {".zip", "application/zip"},
-        #endregion
-    };
-
+    private static IDictionary<string, string> _mimeTypeMappings;
     // instance variables
     private Thread _serverThread;
     private string _rootDirectory;
@@ -219,12 +524,12 @@ class SimpleHTTPServer
     private int numreqs;
     private bool _done = false;
     private Dictionary<string, int> paths= new Dictionary<string, int>();
+    private Dictionary<string, int> errorpages = new Dictionary<string, int>(); //dict to keep track of error pages returned for each url
     public int Port
     {
         get { return _port; }
         private set { _port = value;}
     }
-
     public int NumRequests
     {
         get {return numreqs; }
@@ -234,28 +539,34 @@ class SimpleHTTPServer
     public Dictionary<string,int> Pathreqs{
         get{return paths;}
     } 
+    public Dictionary <string,int> Errors{ //method to return error dictionary
+        get{return errorpages;}
+    }
     /// <summary>
     /// Construct server with given port.
     /// </summary>
     /// <param name="path">Directory path to serve.</param>
     /// <param name="port">Port of the server.</param>
-    public SimpleHTTPServer(string path, int port)
-    {
-        this.Initialize(path, port);
-    }
 
     /// <summary>
     /// Construct server with any open port.
     /// </summary>
     /// <param name="path">Directory path to serve.</param>
-    public SimpleHTTPServer(string path)
+    /// <param name="configFile">the name of JSON configuration file</param> 
+
+    public SimpleHTTPServer(string path, int port, string configFile)
+    {
+            this.Initialize(path, port, configFile);
+        
+    }
+    public SimpleHTTPServer(string path, string configFile)
     {
         //get an empty port
         TcpListener l = new TcpListener(IPAddress.Loopback, 0);
         l.Start();
         int port = ((IPEndPoint)l.LocalEndpoint).Port;
         l.Stop();
-        this.Initialize(path, port);
+        this.Initialize(path, port, configFile);
     }
 
     /// <summary>
@@ -359,7 +670,14 @@ class SimpleHTTPServer
         {
             // This sends a 404 if the file doesn't exist or cannot be read
             // TODO: customize the 404 page
-            context.Response.StatusCode = (int)HttpStatusCode.NotFound;
+            //context.Response.StatusCode = (int)HttpStatusCode.NotFound;
+    
+            IServlet error = new ErrorPage(); //create servlet for errorpage
+            errorpages[filename] = errorpages.GetValueOrDefault(filename, 0) +1;//increment request numbers in dictionary for URL
+            error.ProcessRequest(context);
+            return;//return custom error page
+            
+
         }
         
         context.Response.OutputStream.Close();
@@ -370,10 +688,24 @@ class SimpleHTTPServer
     /// </summary>
     /// <param name="path">the path of the root directory to serve files</param>
     /// <param name="port">the port to listen for connections</param>
-    private void Initialize(string path, int port)
+    /// <param name="configFile">the name of JSON configuration file</param> 
+    private void Initialize(string path, int port, string configFile)
     {
         this._rootDirectory = path;
         this._port = port;
+
+        //read the configuration file
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+        string text = File.ReadAllText("config.json");
+        var config = JsonSerializer.Deserialize<Config>(text, options); 
+
+        // assign the configuration values to instance variables
+        _mimeTypeMappings = config.MimeTypes;
+        _indexFiles = config.IndexFiles.ToArray();
+
         _serverThread = new Thread(this.Listen);
         _serverThread.Start();
     }

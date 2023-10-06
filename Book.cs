@@ -10,5 +10,6 @@ class Book {
     public string Status { get; set; }
     public List<string> Authors { get; set; }
     public List<string> Categories { get; set; }
+    
 
 }
